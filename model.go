@@ -8,7 +8,7 @@ import (
 	"github.com/luiscvega/squid"
 )
 
-func Delete(table string, id string, db *sql.DB) error {
+func Delete(table string, id interface{}, db *sql.DB) error {
 	stmt := squid.Delete(table, id)
 
 	res, err := db.Exec(stmt)
