@@ -2,10 +2,31 @@ package model
 
 import (
 	"database/sql"
+	"errors"
 	"reflect"
 
 	"github.com/luiscvega/squid"
 )
+
+func Delete(table string, id string, db *sql.DB) error {
+	stmt := squid.Delete(table, id)
+
+	res, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count == 1 {
+		return nil
+	}
+
+	return errors.New("sql: rows affected should be 1")
+}
 
 func Create(table string, s interface{}, db *sql.DB) (int, error) {
 	var id int
@@ -22,7 +43,7 @@ func Create(table string, s interface{}, db *sql.DB) (int, error) {
 
 func All(table string, listPtr interface{}, db *sql.DB) error {
 	t := reflect.TypeOf(listPtr).Elem().Elem()
-	stmt := squid.All(table, t)
+	stmt := squid.SelectAll(table, t)
 
 	rows, err := db.Query(stmt)
 	if err != nil {

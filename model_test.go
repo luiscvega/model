@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"os/exec"
+	"strconv"
 	"testing"
 
 	_ "github.com/lib/pq"
@@ -82,6 +83,27 @@ func TestUpdate(t *testing.T) {
 	}
 
 	id, err := Create("products", product{Name: "luis's stuff", Price: 300}, db)
+	if err != nil {
+		t.Error(err)
+	}
+	if id != 1 {
+		t.Error("id != 1")
+	}
+}
+
+func TestDelete(t *testing.T) {
+	db := setup()
+	defer teardown(db)
+
+	type product struct {
+		Id    int    `column:"id"`
+		Name  string `column:"name"`
+		Price int    `column:"price"`
+	}
+
+	id, _ := Create("products", product{Name: "luis's stuff", Price: 300}, db)
+
+	err := Delete("products", strconv.Itoa(id), db)
 	if err != nil {
 		t.Error(err)
 	}
