@@ -3,7 +3,8 @@ package model
 import (
 	"database/sql"
 	"os/exec"
-	"strconv"
+	//"strconv"
+	"reflect"
 	"testing"
 
 	_ "github.com/lib/pq"
@@ -26,30 +27,21 @@ func teardown(db *sql.DB) {
 	exec.Command("dropdb", "model-test").Run()
 }
 
-func TestAll(t *testing.T) {
-	db := setup()
-	defer teardown(db)
+type product struct {
+	Id    int    `column:"id"`
+	Name  string `column:"name"`
+	Price int    `column:"price"`
+}
 
-	type product struct {
-		Id    int    `column:"id"`
-		Name  string `column:"name"`
-		Price int    `column:"price"`
-	}
-
-	// Create 2 records
-	Create("products", product{Name: "luis's stuff", Price: 300}, db)
-	Create("products", product{Name: "miguel's stuff", Price: 400}, db)
-
-	var products []product
-	err := All("products", &products, db)
+func TestGetFields(t *testing.T) {
+	actualFields, err := GetFields(product{})
 	if err != nil {
 		t.Error(err)
 	}
 
-	if len(products) != 2 {
-		t.Error("slice length must be 2")
-	} else if products[0].Name != "luis's stuff" && products[1].Name != "miguel's stuff" {
-		t.Error("incorrect data")
+	expectedFields := []string{"id", "name", "price"}
+	if !reflect.DeepEqual(actualFields, expectedFields) {
+		t.Error(actualFields, " != ", expectedFields)
 	}
 }
 
@@ -57,12 +49,6 @@ func TestCreate(t *testing.T) {
 	db := setup()
 	defer teardown(db)
 
-	type product struct {
-		Id    int    `column:"id"`
-		Name  string `column:"name"`
-		Price int    `column:"price"`
-	}
-
 	id, err := Create("products", product{Name: "luis's stuff", Price: 300}, db)
 	if err != nil {
 		t.Error(err)
@@ -72,42 +58,108 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-func TestUpdate(t *testing.T) {
-	db := setup()
-	defer teardown(db)
+//func TestFetch(t *testing.T) {
+//db := setup()
+//defer teardown(db)
 
-	type product struct {
-		Id    int    `column:"id"`
-		Name  string `column:"name"`
-		Price int    `column:"price"`
-	}
+//type product struct {
+//Id    int    `column:"id"`
+//Name  string `column:"name"`
+//Price int    `column:"price"`
+//}
 
-	id, err := Create("products", product{Name: "luis's stuff", Price: 300}, db)
-	if err != nil {
-		t.Error(err)
-	}
-	if id != 1 {
-		t.Error("id != 1")
-	}
-}
+//expected := product{Name: "luis's stuff", Price: 300}
+//id, _ := Create("products", expected, db)
 
-func TestDelete(t *testing.T) {
-	db := setup()
-	defer teardown(db)
+//actual := product{Id: id}
+//id, err := Fetch("products", actual, db)
+//if expected.Id != actual.Id {
+//t.Error(expected.Id, "!=", actual.Id)
+//}
+//}
 
-	type product struct {
-		Id    int    `column:"id"`
-		Name  string `column:"name"`
-		Price int    `column:"price"`
-	}
+//func TestAll(t *testing.T) {
+//db := setup()
+//defer teardown(db)
 
-	id, _ := Create("products", product{Name: "luis's stuff", Price: 300}, db)
+//type product struct {
+//Id    int    `column:"id"`
+//Name  string `column:"name"`
+//Price int    `column:"price"`
+//}
 
-	err := Delete("products", strconv.Itoa(id), db)
-	if err != nil {
-		t.Error(err)
-	}
-	if id != 1 {
-		t.Error("id != 1")
-	}
-}
+//// Create 2 records
+//Create("products", product{Name: "luis's stuff", Price: 300}, db)
+//Create("products", product{Name: "miguel's stuff", Price: 400}, db)
+
+//var products []product
+//err := All("products", &products, db)
+//if err != nil {
+//t.Error(err)
+//}
+
+//if len(products) != 2 {
+//t.Error("slice length must be 2")
+//} else if products[0].Name != "luis's stuff" && products[1].Name != "miguel's stuff" {
+//t.Error("incorrect data")
+//}
+//}
+
+//func TestCreate(t *testing.T) {
+//db := setup()
+//defer teardown(db)
+
+//type product struct {
+//Id    int    `column:"id"`
+//Name  string `column:"name"`
+//Price int    `column:"price"`
+//}
+
+//id, err := Create("products", product{Name: "luis's stuff", Price: 300}, db)
+//if err != nil {
+//t.Error(err)
+//}
+//if id != 1 {
+//t.Error("id != 1")
+//}
+//}
+
+//func TestUpdate(t *testing.T) {
+//db := setup()
+//defer teardown(db)
+
+//type product struct {
+//Id    int    `column:"id"`
+//Name  string `column:"name"`
+//Price int    `column:"price"`
+//}
+
+//id, err := Create("products", product{Name: "luis's stuff", Price: 300}, db)
+//if err != nil {
+//t.Error(err)
+//}
+//if id != 1 {
+//t.Error("id != 1")
+//}
+//}
+
+//func TestDelete(t *testing.T) {
+//db := setup()
+//defer teardown(db)
+
+//type product struct {
+//Id    int    `column:"id"`
+//Name  string `column:"name"`
+//Price int    `column:"price"`
+//}
+
+//id, _ := Create("products", product{Name: "luis's stuff", Price: 300}, db)
+
+//err := Delete("products", strconv.Itoa(id), db)
+//if err != nil {
+//t.Error(err)
+//}
+//if id != 1 {
+//t.Error("id != 1")
+//}
+//}
