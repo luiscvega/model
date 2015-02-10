@@ -2,19 +2,95 @@ package model
 
 import (
 	"database/sql"
+	"errors"
 	"reflect"
-	"strconv"
 
 	"github.com/luiscvega/squid"
 )
 
-func GetFields(s interface{}) ([]string, error) {
+type field struct {
+	index int
+	name  string
+	kind  reflect.Kind
+}
+
+func GetIdAndValues(s interface{}) (int,[]interface{}, error) {
+	var id int
+
+	v := reflect.ValueOf(s)
+
+	values := make([]interface{}, v.NumField()-1)
+
+	count := 0
+	for i := 0; i < v.NumField(); i++ {
+		if v.Type().Field(i).Tag.Get("column") == "id" {
+			id = int(v.Field(i).Int())
+			continue
+		}
+
+		values[count] = v.Field(i).Interface()
+		count++
+	}
+
+	return id, values, nil
+}
+
+func GetIdAndPointers(s interface{}) (int, []interface{}, error) {
+	val := reflect.ValueOf(s).Elem()
+
+	pointers := make([]interface{}, val.NumField()-1)
+
+	count := 0
+	var id int
+	for i := 0; i < val.NumField(); i++ {
+		if val.Type().Field(i).Tag.Get("column") == "id" {
+			id = int(val.Field(i).Int())
+			continue
+		}
+
+		pointers[count] = val.Field(i).Addr().Interface()
+		count++
+	}
+
+	return id, pointers, nil
+}
+
+func GetFieldNames(t reflect.Type) ([]string, error) {
+	fieldNames := make([]string, t.NumField())
+
+	for i := 0; i < t.NumField(); i++ {
+		fieldNames[i] = t.Field(i).Tag.Get("column")
+	}
+
+	return fieldNames, nil
+}
+
+func GetField(sf reflect.StructField) field {
+	return field{sf.Index[0], sf.Tag.Get("column"), sf.Type.Kind()}
+}
+
+func GetFields(s interface{}) ([]field, error) {
 	t := reflect.TypeOf(s)
 
-	fields := make([]string, t.NumField())
+	fields := make([]field, t.NumField())
 
-	for i := range fields {
-		fields[i] = t.Field(i).Tag.Get("column")
+	for i := 0; i < t.NumField(); i++ {
+		fields[i] = GetField(t.Field(i))
+	}
+
+	return fields, nil
+}
+
+func GetFieldsWithoutID(s interface{}) ([]field, error) {
+	fields, err := GetFields(s)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, field := range fields {
+		if field.name == "id" {
+			fields = append(fields[:i], fields[i+1:]...)
+		}
 	}
 
 	return fields, nil
@@ -23,32 +99,23 @@ func GetFields(s interface{}) ([]string, error) {
 func Create(table string, s interface{}, db *sql.DB) (int, error) {
 	var id int
 
-	v := reflect.ValueOf(s)
-	t := reflect.TypeOf(s)
-
-	tuples := make([][]string, 0, v.NumField()-1)
-	for i := 0; i < v.NumField(); i++ {
-		tuple := make([]string, 2)
-
-		column := t.Field(i).Tag.Get("column")
-		if column == "id" {
-			continue
-		}
-
-		tuple[0] = column
-
-		if v.Field(i).Kind() == reflect.String {
-			tuple[1] = v.Field(i).String()
-		} else {
-			tuple[1] = strconv.Itoa(int(v.Field(i).Int()))
-		}
-
-		tuples = append(tuples, tuple)
+	fields, err := GetFieldsWithoutID(s)
+	if err != nil {
+		return id, err
 	}
 
-	stmt := squid.Insert(table, tuples)
+	v := reflect.ValueOf(s)
 
-	err := db.QueryRow(stmt).Scan(&id)
+	fs := make([]string, len(fields))
+	vs := make([]interface{}, len(fields))
+	for i, field := range fields {
+		fs[i] = field.name
+		vs[i] = v.Field(field.index).Interface()
+	}
+
+	stmt := squid.Insert(table, fs)
+
+	err = db.QueryRow(stmt, vs...).Scan(&id)
 	if err != nil {
 		return id, err
 	}
@@ -56,81 +123,109 @@ func Create(table string, s interface{}, db *sql.DB) (int, error) {
 	return id, nil
 }
 
-//func Fetch(table, s interface{}, db *sql.DB) error {
-//stmt := squid.Fetch(table, s)
+func Fetch(table string, s interface{}, db *sql.DB) error {
+	fieldNames, err := GetFieldNames(reflect.TypeOf(s).Elem())
+	fieldNames = fieldNames[1:]
+	if err != nil {
+		return err
+	}
 
-//err := db.QueryRow(stmt).Scan(fields...)
-//if err != nil {
-//return id, err
-//}
+	id, pointers, err := GetIdAndPointers(s)
+	if err != nil {
+		return err
+	}
 
-//return nil
-//}
+	stmt := squid.Fetch(table, fieldNames, id)
 
-//func Update(table string, s interface{}, db *sql.DB) error {
-//stmt := squid.Update(table, s)
+	err = db.QueryRow(stmt).Scan(pointers...)
+	if err != nil {
+		return err
+	}
 
-//res, err := db.Exec(stmt)
-//if err != nil {
-//return err
-//}
+	return nil
+}
 
-//count, err := res.RowsAffected()
-//if err != nil {
-//return err
-//}
+func All(table string, listPtr interface{}, db *sql.DB) error {
+	t := reflect.TypeOf(listPtr).Elem().Elem()
 
-//if count == 1 {
-//return nil
-//}
+	fieldNames, err := GetFieldNames(t)
+	if err != nil {
+		return err
+	}
 
-//return nil
-//}
+	stmt := squid.SelectAll(table, fieldNames)
 
-//func Delete(table string, id interface{}, db *sql.DB) error {
-//stmt := squid.Delete(table, id)
+	rows, err := db.Query(stmt)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 
-//res, err := db.Exec(stmt)
-//if err != nil {
-//return err
-//}
+	listValue := reflect.ValueOf(listPtr).Elem()
 
-//count, err := res.RowsAffected()
-//if err != nil {
-//return err
-//}
+	for rows.Next() {
+		v := reflect.New(t).Elem()
 
-//if count == 1 {
-//return nil
-//}
+		fields := make([]interface{}, 0)
+		for i := 0; i < v.NumField(); i++ {
+			fields = append(fields, v.Field(i).Addr().Interface())
+		}
 
-//return errors.New("sql: rows affected should be 1")
-//}
+		rows.Scan(fields...)
 
-//func All(table string, listPtr interface{}, db *sql.DB) error {
-//t := reflect.TypeOf(listPtr).Elem().Elem()
-//stmt := squid.SelectAll(table, t)
+		listValue.Set(reflect.Append(listValue, v))
+	}
 
-//rows, err := db.Query(stmt)
-//if err != nil {
-//return err
-//}
-//defer rows.Close()
+	return nil
+}
 
-//listValue := reflect.ValueOf(listPtr).Elem()
+func Update(table string, s interface{}, db *sql.DB) error {
+	fieldNames, err := GetFieldNames(reflect.TypeOf(s))
+	fieldNames = fieldNames[1:]
+	if err != nil {
+		return err
+	}
 
-//for rows.Next() {
-//v := reflect.New(t).Elem()
+	id, values, err := GetIdAndValues(s)
+	if err != nil {
+		return err
+	}
 
-//fields := make([]interface{}, 0)
-//for i := 0; i < v.NumField(); i++ {
-//fields = append(fields, v.Field(i).Addr().Interface())
-//}
+	stmt := squid.Update(table, fieldNames, id)
 
-//rows.Scan(fields...)
+	res, err := db.Exec(stmt, values...)
+	if err != nil {
+		return err
+	}
 
-//listValue.Set(reflect.Append(listValue, v))
-//}
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 
-//return nil
-//}
+	if count != 1 {
+		return errors.New("sql: rows affected should be 1")
+	}
+
+	return nil
+}
+
+func Delete(table string, id int, db *sql.DB) error {
+	stmt := squid.Delete(table, id)
+
+	res, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count == 1 {
+		return nil
+	}
+
+	return errors.New("sql: rows affected should be 1")
+}
